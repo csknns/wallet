@@ -5,7 +5,7 @@ import Foundation
 extension PassesService: AsyncModelMiddleware {
     public func create(model: PassDataType, on db: any Database, next: any AnyAsyncModelResponder) async throws {
         let pass = Pass(
-            typeIdentifier: PassDataType.typeIdentifier,
+            typeIdentifier: model.typeIdentifier,
             authenticationToken: Data([UInt8].random(count: 12)).base64EncodedString()
         )
         try await pass.save(on: db)
@@ -25,7 +25,7 @@ extension PassesService: AsyncModelMiddleware {
 extension PassesServiceCustom: AsyncModelMiddleware {
     public func create(model: PassDataType, on db: any Database, next: any AnyAsyncModelResponder) async throws {
         let pass = PassType(
-            typeIdentifier: PassDataType.typeIdentifier,
+            typeIdentifier: model.typeIdentifier,
             authenticationToken: Data([UInt8].random(count: 12)).base64EncodedString()
         )
         try await pass.save(on: db)

@@ -5,17 +5,16 @@ import VaporWallet
 
 extension PassesServiceCustom: RouteCollection {
     public func boot(routes: any RoutesBuilder) throws {
-        let passTypeIdentifier = PathComponent(stringLiteral: PassDataType.typeIdentifier)
 
         let v1 = routes.grouped("v1")
-        v1.get("devices", ":deviceLibraryIdentifier", "registrations", passTypeIdentifier, use: self.updatablePasses)
+        v1.get("devices", ":deviceLibraryIdentifier", "registrations", ":passTypeIdentifier", use: self.updatablePasses)
         v1.post("log", use: self.logMessage)
-        v1.post("passes", passTypeIdentifier, ":passSerial", "personalize", use: self.personalizedPass)
+        v1.post("passes", ":passTypeIdentifier", ":passSerial", "personalize", use: self.personalizedPass)
 
         let v1auth = v1.grouped(ApplePassMiddleware<PassType>())
-        v1auth.post("devices", ":deviceLibraryIdentifier", "registrations", passTypeIdentifier, ":passSerial", use: self.registerPass)
-        v1auth.get("passes", passTypeIdentifier, ":passSerial", use: self.updatedPass)
-        v1auth.delete("devices", ":deviceLibraryIdentifier", "registrations", passTypeIdentifier, ":passSerial", use: self.unregisterPass)
+        v1auth.post("devices", ":deviceLibraryIdentifier", "registrations", ":passTypeIdentifier", ":passSerial", use: self.registerPass)
+        v1auth.get("passes", ":passTypeIdentifier", ":passSerial", use: self.updatedPass)
+        v1auth.delete("devices", ":deviceLibraryIdentifier", "registrations", ":passTypeIdentifier", ":passSerial", use: self.unregisterPass)
     }
 
     private func registerPass(req: Request) async throws -> HTTPStatus {
@@ -28,13 +27,15 @@ extension PassesServiceCustom: RouteCollection {
             throw Abort(.badRequest)
         }
 
-        guard let serial = req.parameters.get("passSerial", as: UUID.self) else {
+        guard let serial = req.parameters.get("passSerial", as: UUID.self),
+              let passTypeIdentifier = req.parameters.get("passTypeIdentifier"),
+              let deviceLibraryIdentifier = req.parameters.get("deviceLibraryIdentifier")
+        else {
             throw Abort(.badRequest)
         }
-        let deviceLibraryIdentifier = req.parameters.get("deviceLibraryIdentifier")!
         guard
             let pass = try await PassType.query(on: req.db)
-                .filter(\._$typeIdentifier == PassDataType.typeIdentifier)
+                .filter(\._$typeIdentifier == passTypeIdentifier)
                 .filter(\._$id == serial)
                 .first()
         else {
@@ -75,11 +76,14 @@ extension PassesServiceCustom: RouteCollection {
     private func updatablePasses(req: Request) async throws -> SerialNumbersDTO {
         req.logger.debug("Called updatablePasses")
 
-        let deviceLibraryIdentifier = req.parameters.get("deviceLibraryIdentifier")!
+        guard let deviceLibraryIdentifier = req.parameters.get("deviceLibraryIdentifier"),
+              let passTypeIdentifier = req.parameters.get("passTypeIdentifier") else {
+            throw Abort(.badRequest)
+        }
 
         var query = PassesRegistrationType.for(
             deviceLibraryIdentifier: deviceLibraryIdentifier,
-            typeIdentifier: PassDataType.typeIdentifier,
+            typeIdentifier: passTypeIdentifier,
             on: req.db
         )
         if let since: TimeInterval = req.query["passesUpdatedSince"] {
@@ -113,13 +117,14 @@ extension PassesServiceCustom: RouteCollection {
             ifModifiedSince = ims
         }
 
-        guard let id = req.parameters.get("passSerial", as: UUID.self) else {
+        guard let id = req.parameters.get("passSerial", as: UUID.self),
+              let passTypeIdentifier = req.parameters.get("passTypeIdentifier") else {
             throw Abort(.badRequest)
         }
         guard
             let pass = try await PassType.query(on: req.db)
                 .filter(\._$id == id)
-                .filter(\._$typeIdentifier == PassDataType.typeIdentifier)
+                .filter(\._$typeIdentifier == passTypeIdentifier)
                 .first()
         else {
             throw Abort(.notFound)
@@ -151,15 +156,17 @@ extension PassesServiceCustom: RouteCollection {
     private func unregisterPass(req: Request) async throws -> HTTPStatus {
         req.logger.debug("Called unregisterPass")
 
-        guard let passId = req.parameters.get("passSerial", as: UUID.self) else {
+        guard let passId = req.parameters.get("passSerial", as: UUID.self),
+              let deviceLibraryIdentifier = req.parameters.get("deviceLibraryIdentifier"),
+              let passTypeIdentifier = req.parameters.get("passTypeIdentifier") else {
             throw Abort(.badRequest)
         }
-        let deviceLibraryIdentifier = req.parameters.get("deviceLibraryIdentifier")!
+
 
         guard
             let r = try await PassesRegistrationType.for(
                 deviceLibraryIdentifier: deviceLibraryIdentifier,
-                typeIdentifier: PassDataType.typeIdentifier,
+                typeIdentifier: passTypeIdentifier,
                 on: req.db
             )
             .filter(PassType.self, \._$id == passId)
@@ -184,13 +191,14 @@ extension PassesServiceCustom: RouteCollection {
     private func personalizedPass(req: Request) async throws -> Response {
         req.logger.debug("Called personalizedPass")
 
-        guard let id = req.parameters.get("passSerial", as: UUID.self) else {
+        guard let id = req.parameters.get("passSerial", as: UUID.self),
+              let passTypeIdentifier = req.parameters.get("passTypeIdentifier") else {
             throw Abort(.badRequest)
         }
         guard
             try await PassType.query(on: req.db)
                 .filter(\._$id == id)
-                .filter(\._$typeIdentifier == PassDataType.typeIdentifier)
+                .filter(\._$typeIdentifier == passTypeIdentifier)
                 .first() != nil
         else {
             throw Abort(.notFound)

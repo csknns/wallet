@@ -133,7 +133,7 @@ extension PassesServiceCustom {
             .join(parent: \._$device)
             .with(\._$pass)
             .with(\._$device)
-            .filter(PassType.self, \._$typeIdentifier == PassDataType.typeIdentifier)
+            .filter(PassType.self, \._$typeIdentifier == pass.typeIdentifier)
             .filter(PassType.self, \._$id == pass.requireID())
             .all()
     }
